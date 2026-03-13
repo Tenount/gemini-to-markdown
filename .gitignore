@@ -1,0 +1,16 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Reference files (not part of the distributed script)
+gemini.html
+
+# Node (in case anyone adds tooling later)
+node_modules/
