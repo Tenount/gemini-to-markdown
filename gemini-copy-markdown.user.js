@@ -1,14 +1,9 @@
 // ==UserScript==
 // @name         Gemini Canvas - Copy as Markdown
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Adds a "Copy as Markdown" button to the Canvas toolbar in Google Gemini
-// @author       Steve Hanov
 // @license      MIT
-// @homepageURL  https://github.com/smhanov/tampers
-// @supportURL   https://github.com/smhanov/tampers/issues
-// @updateURL    https://raw.githubusercontent.com/smhanov/tampers/main/gemini-copy-markdown.user.js
-// @downloadURL  https://raw.githubusercontent.com/smhanov/tampers/main/gemini-copy-markdown.user.js
 // @match        https://gemini.google.com/*
 // @grant        GM_setClipboard
 // ==/UserScript==
@@ -42,6 +37,14 @@
         }
         if (node.nodeType !== Node.ELEMENT_NODE) return '';
 
+        // Ignore table footer with buttons
+        if (
+            node.tagName.toLowerCase() === 'button' ||
+            (node.classList && node.classList.contains('table-footer'))
+        ) {
+            return '';
+        }
+
         const tag = node.tagName.toLowerCase();
         const children = () => convertChildren(node);
 
@@ -68,7 +71,6 @@
                 return `~~${children()}~~`;
 
             case 'code': {
-                // Inline code (not inside <pre>)
                 if (node.parentElement && node.parentElement.tagName.toLowerCase() === 'pre') {
                     return children();
                 }
@@ -163,7 +165,6 @@
             )
         );
 
-        // Column widths
         const cols = Math.max(...matrix.map(r => r.length));
         const widths = Array(cols).fill(3);
         for (const row of matrix) {
@@ -276,9 +277,12 @@
     }
 
     function findCanvasEditor() {
-        const editor = document.querySelector(
-            '#extended-response-markdown-content .ProseMirror, .immersive-editor .ProseMirror'
-        );
+        // Fallback
+        const editor = document.querySelector('#extended-response-markdown-content .ProseMirror') ||
+                       document.querySelector('.immersive-editor .ProseMirror') ||
+                       document.querySelector('#extended-response-markdown-content') ||
+                       document.querySelector('immersive-editor .markdown');
+
         log('findCanvasEditor()', editor ? 'found' : 'not found');
         return editor;
     }
@@ -329,62 +333,29 @@
             }
 
             log('Toolbar actions container found', actions);
-            log('Current action children:', [...actions.children].map((el) => ({
-                tag: el.tagName,
-                className: el.className,
-                testId: el.getAttribute('data-test-id'),
-            })));
 
             const btn = createCopyButton();
             const firstAction = actions.querySelector('print-button, share-button, canvas-create-button, [data-test-id="close-button"]');
 
-            log('First existing toolbar action', firstAction || 'none');
-
             if (firstAction) {
                 const insertionTarget = firstAction.closest('print-button, share-button, canvas-create-button, button') || firstAction;
-                log('Insertion target resolved to', insertionTarget, 'parent is', insertionTarget?.parentNode);
                 try {
                     actions.insertBefore(btn, insertionTarget);
-                    log('Inserted button before first action', insertionTarget);
                 } catch (error) {
-                    log('insertBefore failed; falling back to prepend', error);
                     actions.prepend(btn);
-                    log('Fallback prepend completed');
                 }
             } else {
                 actions.prepend(btn);
-                log('Prepended button to toolbar actions');
             }
-
-            requestAnimationFrame(() => {
-                const buttonInDom = document.getElementById(BUTTON_ID);
-                log('Post-insert check:', {
-                    present: !!buttonInDom,
-                    parentTag: buttonInDom?.parentElement?.tagName,
-                    parentClass: buttonInDom?.parentElement?.className,
-                    rect: buttonInDom?.getBoundingClientRect(),
-                    computedDisplay: buttonInDom ? getComputedStyle(buttonInDom).display : null,
-                    computedVisibility: buttonInDom ? getComputedStyle(buttonInDom).visibility : null,
-                    computedOpacity: buttonInDom ? getComputedStyle(buttonInDom).opacity : null,
-                });
-            });
         } catch (error) {
             log('tryInjectButton() failed', error);
         }
     }
 
-    // Watch for DOM changes (Canvas is loaded dynamically)
-    const observer = new MutationObserver((mutations) => {
-        log('MutationObserver fired', {
-            count: mutations.length,
-            readyState: document.readyState,
-        });
+    const observer = new MutationObserver(() => {
         tryInjectButton();
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    log('MutationObserver attached');
 
-    // Also try immediately in case already loaded
-    log('Running initial injection attempt');
     tryInjectButton();
 })();
